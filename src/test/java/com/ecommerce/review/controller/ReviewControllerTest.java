@@ -3,8 +3,8 @@ package com.ecommerce.review.controller;
 import com.ecommerce.review.service.ReviewService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static com.ecommerce.review.service.ReviewService.HELLO_FROM_REVIEW_SERVICE;
@@ -20,7 +20,7 @@ class ReviewControllerTest {
     @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
+    @MockitoBean
     private ReviewService reviewService;
 
     @Test
