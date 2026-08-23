@@ -1,0 +1,28 @@
+# Profile "test" — full-context tests (@SpringBootTest + @ActiveProfiles("test")),
+# e.g. the Pact provider verification. H2 in place of Postgres, schema from the
+# entities, no Flyway, no Eureka. Mirrors the application-test.yaml the other
+# JPA services keep.
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.cloud.autoconfigure.LifecycleMvcEndpointAutoConfiguration
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    database-platform: org.hibernate.dialect.H2Dialect
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+  flyway:
+    enabled: false
+
+eureka:
+  client:
+    enabled: false
+    register-with-eureka: false
+    fetch-registry: false

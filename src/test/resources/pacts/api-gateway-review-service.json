@@ -1,0 +1,164 @@
+{
+  "consumer": {
+    "name": "api-gateway"
+  },
+  "interactions": [
+    {
+      "comments": {
+        "testname": "com.ecommerce.gateway.contract.ReviewServiceConsumerPactTest.authenticatedCreateReview_isForwardedWithIdentityHeaders()",
+        "text": [
+
+        ]
+      },
+      "description": "a create-review request forwarded for the authenticated user alice",
+      "key": "166419b3",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "product 1 exists and alice has not reviewed it"
+        }
+      ],
+      "request": {
+        "body": {
+          "content": {
+            "body": "Comfortable, precise and the battery lasts for weeks.",
+            "productId": 1,
+            "rating": 5,
+            "title": "Great mouse"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ],
+          "X-User-Id": [
+            "42"
+          ],
+          "X-User-Role": [
+            "CUSTOMER"
+          ],
+          "X-Username": [
+            "alice"
+          ]
+        },
+        "method": "POST",
+        "path": "/api/v1/reviews"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "customerId": "alice",
+            "id": 11,
+            "productId": 1,
+            "rating": 5,
+            "status": "PENDING",
+            "title": "Great mouse"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.productId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.rating": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.status": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.title": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 201
+      },
+      "transport": "http",
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "testname": "com.ecommerce.gateway.contract.ReviewServiceConsumerPactTest.authenticatedAdminDelete_isForwardedWithRoleHeader()",
+        "text": [
+
+        ]
+      },
+      "description": "a delete-review request forwarded for the authenticated admin alice",
+      "key": "ac86fc7a",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "review 11 by bob exists"
+        }
+      ],
+      "request": {
+        "headers": {
+          "X-User-Id": [
+            "42"
+          ],
+          "X-User-Role": [
+            "ADMIN"
+          ],
+          "X-Username": [
+            "alice"
+          ]
+        },
+        "method": "DELETE",
+        "path": "/api/v1/reviews/11"
+      },
+      "response": {
+        "status": 204
+      },
+      "transport": "http",
+      "type": "Synchronous/HTTP"
+    }
+  ],
+  "metadata": {
+    "pact-jvm": {
+      "version": "4.7.5"
+    },
+    "pactSpecification": {
+      "version": "4.0"
+    }
+  },
+  "provider": {
+    "name": "review-service"
+  }
+}
