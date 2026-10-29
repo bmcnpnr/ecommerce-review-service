@@ -27,6 +27,8 @@ public class ReviewService {
         // Validate product exists
         try {
             productServiceClient.getProductById(request.getProductId());
+        } catch (ProductNotFoundException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Product " + request.getProductId() + " not found or product service unavailable");
         }

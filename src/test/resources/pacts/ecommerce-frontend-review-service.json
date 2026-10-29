@@ -1,0 +1,951 @@
+{
+  "consumer": {
+    "name": "ecommerce-frontend"
+  },
+  "interactions": [
+    {
+      "description": "a request for the approved reviews of product 1",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "review 11 by bob exists"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/reviews/product/1",
+        "query": {
+          "approvedOnly": [
+            "true"
+          ]
+        }
+      },
+      "response": {
+        "body": {
+          "content": [
+            {
+              "body": "Does what it says on the box, no complaints so far.",
+              "createdAt": "2026-10-29T11:00:00.123456",
+              "customerId": "bob",
+              "helpfulVotes": 0,
+              "id": 11,
+              "productId": 1,
+              "rating": 4,
+              "status": "APPROVED",
+              "title": "Solid",
+              "unhelpfulVotes": 0
+            }
+          ],
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$[*].body": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[*].createdAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?$"
+                }
+              ]
+            },
+            "$[*].customerId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[*].helpfulVotes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$[*].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$[*].productId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$[*].rating": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$[*].status": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^(PENDING|APPROVED|REJECTED)$"
+                }
+              ]
+            },
+            "$[*].title": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[*].unhelpfulVotes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "description": "a request for the rating summary of product 1",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "review 11 by bob exists"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/reviews/product/1/summary"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "approvedReviews": 1,
+            "averageRating": 4,
+            "productId": 1,
+            "ratingDistribution": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 1,
+              "5": 0
+            },
+            "totalReviews": 1
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.approvedReviews": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.averageRating": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "number"
+                }
+              ]
+            },
+            "$.productId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.ratingDistribution[1]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.ratingDistribution[2]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.ratingDistribution[3]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.ratingDistribution[4]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.ratingDistribution[5]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.totalReviews": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "description": "alice's helpful vote on review 11",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "review 11 by bob exists"
+        }
+      ],
+      "request": {
+        "body": {
+          "content": {
+            "helpful": true
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Authorization": [
+            "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhbGljZSIsInVzZXJJZCI6NDIsInJvbGUiOiJDVVNUT01FUiIsImlhdCI6MTc5ODc2MTYwMCwiZXhwIjo0MTAyNDQ0ODAwfQ.bmRawmVR8OEdvaEgFDjrzo87mRLZDJX7GfVnVBKXsV4"
+          ],
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "header": {
+            "Authorization": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^Bearer [A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/api/v1/reviews/11/vote"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "body": "Does what it says on the box, no complaints so far.",
+            "createdAt": "2026-10-29T11:00:00.123456",
+            "customerId": "bob",
+            "helpfulVotes": 1,
+            "id": 11,
+            "productId": 1,
+            "rating": 4,
+            "status": "APPROVED",
+            "title": "Solid",
+            "unhelpfulVotes": 0
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.body": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.createdAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?$"
+                }
+              ]
+            },
+            "$.customerId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.helpfulVotes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.productId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.rating": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.status": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^(PENDING|APPROVED|REJECTED)$"
+                }
+              ]
+            },
+            "$.title": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.unhelpfulVotes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "description": "alice's request to review product 1",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "product 1 exists and alice has not reviewed it"
+        }
+      ],
+      "request": {
+        "body": {
+          "content": {
+            "body": "Comfortable, precise and the battery lasts for weeks.",
+            "productId": 1,
+            "rating": 5,
+            "title": "Great mouse"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Authorization": [
+            "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhbGljZSIsInVzZXJJZCI6NDIsInJvbGUiOiJDVVNUT01FUiIsImlhdCI6MTc5ODc2MTYwMCwiZXhwIjo0MTAyNDQ0ODAwfQ.bmRawmVR8OEdvaEgFDjrzo87mRLZDJX7GfVnVBKXsV4"
+          ],
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "header": {
+            "Authorization": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^Bearer [A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/api/v1/reviews"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "customerId": "alice",
+            "id": 12,
+            "productId": 1,
+            "status": "PENDING"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.customerId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.productId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.status": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^(PENDING|APPROVED|REJECTED)$"
+                }
+              ]
+            }
+          }
+        },
+        "status": 201
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "description": "an admin request for all reviews of product 1",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "review 12 by bob is pending for product 1"
+        }
+      ],
+      "request": {
+        "headers": {
+          "Authorization": [
+            "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsInVzZXJJZCI6MSwicm9sZSI6IkFETUlOIiwiaWF0IjoxNzk4NzYxNjAwLCJleHAiOjQxMDI0NDQ4MDB9.irMIjHk52RlzLgA-bG31KMTVo3clbkkO3m0hgpXdnmc"
+          ]
+        },
+        "matchingRules": {
+          "header": {
+            "Authorization": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^Bearer [A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$"
+                }
+              ]
+            }
+          }
+        },
+        "method": "GET",
+        "path": "/api/v1/reviews/product/1",
+        "query": {
+          "approvedOnly": [
+            "false"
+          ]
+        }
+      },
+      "response": {
+        "body": {
+          "content": [
+            {
+              "body": "Does what it says on the box, no complaints so far.",
+              "createdAt": "2026-10-29T11:00:00.123456",
+              "customerId": "bob",
+              "helpfulVotes": 0,
+              "id": 12,
+              "productId": 1,
+              "rating": 4,
+              "status": "PENDING",
+              "title": "Solid",
+              "unhelpfulVotes": 0
+            }
+          ],
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$[*].body": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[*].createdAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?$"
+                }
+              ]
+            },
+            "$[*].customerId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[*].helpfulVotes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$[*].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$[*].productId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$[*].rating": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$[*].status": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^(PENDING|APPROVED|REJECTED)$"
+                }
+              ]
+            },
+            "$[*].title": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[*].unhelpfulVotes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "description": "an admin request to approve review 12",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "review 12 by bob is pending for product 1"
+        }
+      ],
+      "request": {
+        "headers": {
+          "Authorization": [
+            "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsInVzZXJJZCI6MSwicm9sZSI6IkFETUlOIiwiaWF0IjoxNzk4NzYxNjAwLCJleHAiOjQxMDI0NDQ4MDB9.irMIjHk52RlzLgA-bG31KMTVo3clbkkO3m0hgpXdnmc"
+          ]
+        },
+        "matchingRules": {
+          "header": {
+            "Authorization": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^Bearer [A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$"
+                }
+              ]
+            }
+          }
+        },
+        "method": "PATCH",
+        "path": "/api/v1/reviews/12/moderate",
+        "query": {
+          "status": [
+            "APPROVED"
+          ]
+        }
+      },
+      "response": {
+        "body": {
+          "content": {
+            "id": 12,
+            "status": "APPROVED"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.status": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^(PENDING|APPROVED|REJECTED)$"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "description": "bob's request to delete his review 11",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "review 11 by bob exists"
+        }
+      ],
+      "request": {
+        "headers": {
+          "Authorization": [
+            "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJib2IiLCJ1c2VySWQiOjQzLCJyb2xlIjoiQ1VTVE9NRVIiLCJpYXQiOjE3OTg3NjE2MDAsImV4cCI6NDEwMjQ0NDgwMH0.hoOw6KupT90WMwkD7crIBZ7B2w4KUAZxeLIpRgL7-AU"
+          ]
+        },
+        "matchingRules": {
+          "header": {
+            "Authorization": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^Bearer [A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$"
+                }
+              ]
+            }
+          }
+        },
+        "method": "DELETE",
+        "path": "/api/v1/reviews/11"
+      },
+      "response": {
+        "status": 204
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "description": "bob's request to edit his review 11",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "review 11 by bob exists"
+        }
+      ],
+      "request": {
+        "body": {
+          "content": {
+            "body": "The scroll wheel started squeaking after a month.",
+            "productId": 1,
+            "rating": 3,
+            "title": "Okay"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Authorization": [
+            "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJib2IiLCJ1c2VySWQiOjQzLCJyb2xlIjoiQ1VTVE9NRVIiLCJpYXQiOjE3OTg3NjE2MDAsImV4cCI6NDEwMjQ0NDgwMH0.hoOw6KupT90WMwkD7crIBZ7B2w4KUAZxeLIpRgL7-AU"
+          ],
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "header": {
+            "Authorization": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^Bearer [A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$"
+                }
+              ]
+            }
+          }
+        },
+        "method": "PUT",
+        "path": "/api/v1/reviews/11"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "body": "Does what it says on the box, no complaints so far.",
+            "createdAt": "2026-10-29T11:00:00.123456",
+            "customerId": "bob",
+            "helpfulVotes": 0,
+            "id": 11,
+            "productId": 1,
+            "rating": 3,
+            "status": "PENDING",
+            "title": "Okay",
+            "unhelpfulVotes": 0
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.body": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.createdAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?$"
+                }
+              ]
+            },
+            "$.customerId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.helpfulVotes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.productId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.rating": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.status": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^(PENDING|APPROVED|REJECTED)$"
+                }
+              ]
+            },
+            "$.title": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.unhelpfulVotes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    }
+  ],
+  "metadata": {
+    "pact-js": {
+      "version": "17.1.4"
+    },
+    "pactRust": {
+      "ffi": "0.5.8",
+      "models": "1.3.16"
+    },
+    "pactSpecification": {
+      "version": "4.0"
+    }
+  },
+  "provider": {
+    "name": "review-service"
+  }
+}

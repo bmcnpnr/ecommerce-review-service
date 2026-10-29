@@ -1,6 +1,11 @@
 package com.ecommerce.reviewservice.contract;
 
 import au.com.dius.pact.provider.junit5.HttpTestTarget;
+import org.apache.hc.core5.http.Header;
+import org.apache.hc.core5.http.HttpRequest;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+import java.util.Base64;
 import au.com.dius.pact.provider.junit5.PactVerificationContext;
 import au.com.dius.pact.provider.junit5.PactVerificationInvocationContextProvider;
 import au.com.dius.pact.provider.junitsupport.Provider;
@@ -58,9 +63,26 @@ class ReviewServiceProviderPactTest {
 
     @TestTemplate
     @ExtendWith(PactVerificationInvocationContextProvider.class)
-    void verifyPact(PactVerificationContext context) {
+    void verifyPact(PactVerificationContext context, HttpRequest request) {
+        addGatewayIdentityHeaders(request);
         context.verifyInteraction();
     }
+
+    /**
+     * What api-gateway's JwtAuthenticationFilter does on an authenticated route (the frontend pact carries only the
+     * bearer token): decode the payload (no signature check) and set X-Username, X-User-Id, X-User-Role.
+     * Public routes carry no Authorization header in the pact, so nothing is added.
+     */
+    static void addGatewayIdentityHeaders(HttpRequest request) {
+        Header auth = request.getFirstHeader("Authorization");
+        if (auth == null || !auth.getValue().startsWith("Bearer ")) return;
+        String payload = auth.getValue().substring("Bearer ".length()).split("[.]")[1];
+        JsonNode claims = JsonMapper.builder().build().readTree(Base64.getUrlDecoder().decode(payload));
+        request.setHeader("X-Username", claims.get("sub").asString());
+        request.setHeader("X-User-Id", claims.get("userId").asString());
+        request.setHeader("X-User-Role", claims.get("role").asString());
+    }
+
 
     // ───────────────────────── provider states ─────────────────────────
     // State names are part of the contract: consumers reference them verbatim.
@@ -85,6 +107,15 @@ class ReviewServiceProviderPactTest {
                         + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 11L, 1L, "bob", (short) 4, "Solid", "Does what it says on the box, no complaints so far.",
                 "APPROVED", LocalDateTime.now(), LocalDateTime.now());
+    }
+
+    @State("review 12 by bob is pending for product 1")
+    void review12ByBobPending() {
+        clearReviews();
+        jdbc.update("INSERT INTO reviews (id, product_id, customer_id, rating, title, body, status, created_at, updated_at) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                12L, 1L, "bob", (short) 3, "Okay", "Works, but the scroll wheel squeaks a little.",
+                "PENDING", LocalDateTime.now(), LocalDateTime.now());
     }
 
     private void clearReviews() {

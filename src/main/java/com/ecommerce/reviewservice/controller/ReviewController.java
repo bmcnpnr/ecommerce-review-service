@@ -1,6 +1,7 @@
 package com.ecommerce.reviewservice.controller;
 
 import com.ecommerce.reviewservice.dto.*;
+import com.ecommerce.reviewservice.exception.UnauthorizedReviewAccessException;
 import com.ecommerce.reviewservice.model.ReviewStatus;
 import com.ecommerce.reviewservice.service.ReviewService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -78,7 +79,11 @@ public class ReviewController {
     @Operation(summary = "Moderate a review (Admin)", security = @SecurityRequirement(name = "bearerAuth"))
     public ResponseEntity<ReviewDTO> moderate(
             @PathVariable Long id,
-            @RequestParam ReviewStatus status) {
+            @RequestParam ReviewStatus status,
+            @RequestHeader(value = "X-User-Role", defaultValue = "CUSTOMER") String userRole) {
+        if (!"ADMIN".equalsIgnoreCase(userRole)) {
+            throw new UnauthorizedReviewAccessException("Only an admin can moderate reviews");
+        }
         return ResponseEntity.ok(reviewService.moderateReview(id, status));
     }
 
