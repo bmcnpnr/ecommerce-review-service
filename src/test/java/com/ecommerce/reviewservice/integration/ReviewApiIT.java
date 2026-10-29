@@ -91,7 +91,7 @@ class ReviewApiIT extends PostgresIntegrationTestSupport {
         // nothing approved yet
         client.get().uri("/api/v1/reviews/product/1").exchange()
                 .expectStatus().isOk().expectBody().jsonPath("$.length()").isEqualTo(0);
-        client.get().uri("/api/v1/reviews/product/1?approvedOnly=false").exchange()
+        client.get().uri("/api/v1/reviews/product/1?approvedOnly=false").header("X-User-Role", "ADMIN").exchange()
                 .expectStatus().isOk().expectBody().jsonPath("$.length()").isEqualTo(3);
 
         // moderate two of them
@@ -145,7 +145,7 @@ class ReviewApiIT extends PostgresIntegrationTestSupport {
         client.delete().uri("/api/v1/reviews/{id}", id).header("X-Username", "mallory").header("X-User-Role", "CUSTOMER")
                 .exchange().expectStatus().isForbidden();
         client.delete().uri("/api/v1/reviews/{id}", id)
-                .exchange().expectStatus().isForbidden();
+                .exchange().expectStatus().isUnauthorized();
 
         client.delete().uri("/api/v1/reviews/{id}", id).header("X-Username", "root").header("X-User-Role", "ADMIN")
                 .exchange().expectStatus().isNoContent();
@@ -156,6 +156,7 @@ class ReviewApiIT extends PostgresIntegrationTestSupport {
     void deletingAReviewWithVotes_removesTheVotes() {
         productExists(1L);
         long id = createReview(1L, "alice", 5);
+        moderate(id, "APPROVED");
         vote(id, "bob", true);
         vote(id, "carol", false);
 

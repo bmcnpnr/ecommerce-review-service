@@ -5,7 +5,6 @@ import com.ecommerce.reviewservice.controller.ReviewController;
 import com.ecommerce.reviewservice.dto.ReviewDTO;
 import com.ecommerce.reviewservice.model.ReviewStatus;
 import com.ecommerce.reviewservice.service.ReviewService;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -74,9 +73,9 @@ class ReviewControllerSecurityTest {
     }
 
     @Test
-    void moderate_withoutRoleHeader_isForbidden() throws Exception {
+    void moderate_withoutAnyIdentity_is401() throws Exception {
         mockMvc.perform(patch("/api/v1/reviews/11/moderate").param("status", "APPROVED"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
 
         verify(reviewService, never()).moderateReview(anyLong(), any());
     }
@@ -103,8 +102,6 @@ class ReviewControllerSecurityTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"admin", "Admin", "aDmIn"})
-    @Disabled("BUG S-30: the role check is case-insensitive (equalsIgnoreCase), so 'admin'/'Admin' moderate reviews "
-            + "although the only role the platform issues is exactly 'ADMIN'")
     void moderate_roleWithDifferentCase_isForbidden(String role) throws Exception {
         when(reviewService.moderateReview(anyLong(), any())).thenReturn(review(11L, "alice", ReviewStatus.APPROVED));
 
@@ -142,8 +139,6 @@ class ReviewControllerSecurityTest {
     }
 
     @Test
-    @Disabled("BUG S-31: a request without X-Username is not rejected but becomes the shared user 'anonymous', "
-            + "who can create a review (one per product, for everyone)")
     void create_withoutIdentity_isRejected() throws Exception {
         mockMvc.perform(post("/api/v1/reviews").contentType(MediaType.APPLICATION_JSON).content(VALID_REVIEW))
                 .andExpect(status().is4xxClientError());
@@ -152,7 +147,6 @@ class ReviewControllerSecurityTest {
     }
 
     @Test
-    @Disabled("BUG S-31: a request with a blank X-Username is accepted and stored with an empty author")
     void create_withBlankIdentity_isRejected() throws Exception {
         mockMvc.perform(post("/api/v1/reviews").header("X-Username", "  ")
                         .contentType(MediaType.APPLICATION_JSON).content(VALID_REVIEW))
@@ -162,7 +156,6 @@ class ReviewControllerSecurityTest {
     }
 
     @Test
-    @Disabled("BUG S-31: update/vote/delete without X-Username run as the shared user 'anonymous' instead of being rejected")
     void updateVoteDelete_withoutIdentity_areRejected() throws Exception {
         mockMvc.perform(put("/api/v1/reviews/11").contentType(MediaType.APPLICATION_JSON).content("{\"rating\":1}"))
                 .andExpect(status().is4xxClientError());
@@ -290,8 +283,6 @@ class ReviewControllerSecurityTest {
     }
 
     @Test
-    @Disabled("BUG S-34: 400s for unreadable bodies and type mismatches return the framework's own message, "
-            + "exposing Java type names")
     void clientErrors_doNotEchoFrameworkMessages() throws Exception {
         String badPath = mockMvc.perform(get("/api/v1/reviews/abc")).andExpect(status().isBadRequest())
                 .andReturn().getResponse().getContentAsString();

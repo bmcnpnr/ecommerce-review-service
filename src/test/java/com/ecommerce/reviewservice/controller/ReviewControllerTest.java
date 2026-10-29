@@ -70,13 +70,12 @@ class ReviewControllerTest {
     }
 
     @Test
-    void create_withoutXUsername_defaultsToAnonymous() throws Exception {
-        when(reviewService.createReview(any(), eq("anonymous"))).thenReturn(review(12L, "anonymous", ReviewStatus.PENDING));
-
+    void create_withoutXUsername_isRejectedWith401() throws Exception {
         mockMvc.perform(post("/api/v1/reviews").contentType(MediaType.APPLICATION_JSON).content(VALID_REVIEW))
-                .andExpect(status().isCreated());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("Authentication required"));
 
-        verify(reviewService).createReview(any(), eq("anonymous"));
+        verifyNoInteractions(reviewService);
     }
 
     @Test
@@ -153,7 +152,8 @@ class ReviewControllerTest {
         when(reviewService.getReviewsByProduct(1L, false)).thenReturn(List.of(
                 review(11L, "alice", ReviewStatus.APPROVED), review(12L, "bob", ReviewStatus.PENDING)));
 
-        mockMvc.perform(get("/api/v1/reviews/product/1").param("approvedOnly", "false"))
+        mockMvc.perform(get("/api/v1/reviews/product/1").param("approvedOnly", "false")
+                        .header("X-User-Role", "ADMIN"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(2)));
     }
@@ -182,7 +182,7 @@ class ReviewControllerTest {
     void getByCustomer_returns200() throws Exception {
         when(reviewService.getReviewsByCustomer("alice")).thenReturn(List.of(review(11L, "alice", ReviewStatus.PENDING)));
 
-        mockMvc.perform(get("/api/v1/reviews/customer/alice"))
+        mockMvc.perform(get("/api/v1/reviews/customer/alice").header("X-Username", "alice"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].customerId").value("alice"));
     }
@@ -210,16 +210,15 @@ class ReviewControllerTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.status").value(403))
                 .andExpect(jsonPath("$.error").value("Forbidden"))
-                .andExpect(jsonPath("$.message").value("Only the review author can update this review"));
+                .andExpect(jsonPath("$.message").value("Access denied"));
     }
 
     @Test
-    void update_withoutXUsername_isTreatedAsAnonymous() throws Exception {
-        when(reviewService.updateReview(eq(11L), any(), eq("anonymous")))
-                .thenThrow(new UnauthorizedReviewAccessException("Only the review author can update this review"));
-
+    void update_withoutXUsername_isRejectedWith401() throws Exception {
         mockMvc.perform(put("/api/v1/reviews/11").contentType(MediaType.APPLICATION_JSON).content("{\"rating\":1}"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(reviewService);
     }
 
     @Test
@@ -249,11 +248,11 @@ class ReviewControllerTest {
     }
 
     @Test
-    void delete_withoutHeaders_defaultsToAnonymousCustomer() throws Exception {
+    void delete_withoutHeaders_isRejectedWith401() throws Exception {
         mockMvc.perform(delete("/api/v1/reviews/11"))
-                .andExpect(status().isNoContent());
+                .andExpect(status().isUnauthorized());
 
-        verify(reviewService).deleteReview(11L, "anonymous", "CUSTOMER");
+        verifyNoInteractions(reviewService);
     }
 
     @Test

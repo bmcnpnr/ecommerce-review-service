@@ -12,7 +12,6 @@ import com.ecommerce.reviewservice.repository.ReviewRepository;
 import com.ecommerce.reviewservice.repository.ReviewVoteRepository;
 import com.ecommerce.reviewservice.service.ReviewService;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -122,7 +121,6 @@ class ReviewServiceSecurityTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"admin", "Admin"})
-    @Disabled("BUG S-30: the role check is case-insensitive (equalsIgnoreCase), so a caller with role 'admin' deletes anyone's review")
     void delete_byAnotherUser_withWrongCaseAdminRole_isForbidden(String role) {
         assertThatThrownBy(() -> service.deleteReview(11L, "mallory", role))
                 .isInstanceOf(UnauthorizedReviewAccessException.class);
@@ -133,7 +131,6 @@ class ReviewServiceSecurityTest {
     // ───────────────────────── votes ─────────────────────────
 
     @Test
-    @Disabled("BUG S-32: an author can vote their own review 'helpful', inflating the score used to rank it")
     void vote_onOwnReview_isRejected() {
         assertThatThrownBy(() -> service.voteOnReview(11L, "alice", true))
                 .isInstanceOf(UnauthorizedReviewAccessException.class);
@@ -142,7 +139,6 @@ class ReviewServiceSecurityTest {
     }
 
     @Test
-    @Disabled("BUG S-32: votes are accepted on PENDING/REJECTED reviews, which are not public and have not been moderated")
     void vote_onUnapprovedReview_isRejected() {
         for (ReviewStatus status : new ReviewStatus[]{ReviewStatus.PENDING, ReviewStatus.REJECTED}) {
             aliceReview.setStatus(status);

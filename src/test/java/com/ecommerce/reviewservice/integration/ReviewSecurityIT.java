@@ -3,7 +3,6 @@ package com.ecommerce.reviewservice.integration;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -132,9 +131,9 @@ class ReviewSecurityIT extends PostgresIntegrationTestSupport {
         long id = createReview(1L, "alice");
 
         client.put().uri("/api/v1/reviews/{id}", id).contentType(MediaType.APPLICATION_JSON)
-                .body("{\"title\":\"Defaced title\"}").exchange().expectStatus().isForbidden();
-        client.delete().uri("/api/v1/reviews/{id}", id).exchange().expectStatus().isForbidden();
-        client.patch().uri("/api/v1/reviews/{id}/moderate?status=APPROVED", id).exchange().expectStatus().isForbidden();
+                .body("{\"title\":\"Defaced title\"}").exchange().expectStatus().isUnauthorized();
+        client.delete().uri("/api/v1/reviews/{id}", id).exchange().expectStatus().isUnauthorized();
+        client.patch().uri("/api/v1/reviews/{id}/moderate?status=APPROVED", id).exchange().expectStatus().isUnauthorized();
 
         assertThat(count("reviews")).isEqualTo(1);
         assertThat(dbString("SELECT title FROM reviews WHERE id = ?", id)).isEqualTo("Great mouse");
@@ -165,8 +164,6 @@ class ReviewSecurityIT extends PostgresIntegrationTestSupport {
     }
 
     @Test
-    @Disabled("BUG S-30: the role check is case-insensitive, so a request with X-User-Role 'admin' deletes and moderates "
-            + "other users' reviews")
     void roleWithWrongCase_isNotAnAdmin() {
         long id = createReview(1L, "alice");
 
@@ -264,8 +261,6 @@ class ReviewSecurityIT extends PostgresIntegrationTestSupport {
     // ───────────────────────── anonymous identity ─────────────────────────
 
     @Test
-    @Disabled("BUG S-31: a request without X-Username is accepted as the shared user 'anonymous': it stores a review "
-            + "that any other unauthenticated caller can then edit or delete, and burns the single per-product slot")
     void createWithoutIdentity_isRejected_andStoresNothing() {
         post(reviewBody(1L, 5), null).expectStatus().is4xxClientError();
 
@@ -273,7 +268,6 @@ class ReviewSecurityIT extends PostgresIntegrationTestSupport {
     }
 
     @Test
-    @Disabled("BUG S-31: a blank X-Username is accepted and stored as an empty author")
     void createWithBlankIdentity_isRejected_andStoresNothing() {
         client.post().uri("/api/v1/reviews").header("X-Username", " ")
                 .contentType(MediaType.APPLICATION_JSON).body(JSON.writeValueAsString(reviewBody(1L, 5)))
@@ -283,7 +277,6 @@ class ReviewSecurityIT extends PostgresIntegrationTestSupport {
     }
 
     @Test
-    @Disabled("BUG S-31: voting without X-Username is accepted as the shared user 'anonymous'")
     void voteWithoutIdentity_isRejected() {
         long id = createReview(1L, "alice");
 
@@ -336,7 +329,6 @@ class ReviewSecurityIT extends PostgresIntegrationTestSupport {
     }
 
     @Test
-    @Disabled("BUG S-32: an author can vote their own review 'helpful'")
     void authorCannotVoteOwnReview() {
         long id = createReview(1L, "alice");
         moderate(id, "APPROVED", "ADMIN");
@@ -349,7 +341,6 @@ class ReviewSecurityIT extends PostgresIntegrationTestSupport {
     }
 
     @Test
-    @Disabled("BUG S-32: votes are accepted on PENDING (unmoderated, unpublished) reviews")
     void cannotVoteOnAReviewThatIsNotPublished() {
         long id = createReview(1L, "alice");
 
@@ -363,7 +354,6 @@ class ReviewSecurityIT extends PostgresIntegrationTestSupport {
     // ───────────────────────── unmoderated content visibility ─────────────────────────
 
     @Test
-    @Disabled("BUG S-33: GET /reviews/{id} returns PENDING/REJECTED reviews (with the author's username) to anyone")
     void unapprovedReview_isNotReadableByOtherUsers() {
         long id = createReview(1L, "alice");
 
@@ -372,7 +362,6 @@ class ReviewSecurityIT extends PostgresIntegrationTestSupport {
     }
 
     @Test
-    @Disabled("BUG S-33: GET /reviews/product/{id}?approvedOnly=false lists every pending/rejected review to any caller")
     void approvedOnlyFalse_isAnAdminOnlyView() {
         createReview(1L, "alice");
 
@@ -384,7 +373,6 @@ class ReviewSecurityIT extends PostgresIntegrationTestSupport {
     }
 
     @Test
-    @Disabled("BUG S-33: GET /reviews/customer/{customerId} returns another user's pending reviews to any caller")
     void otherUsersPendingReviews_areNotListedByCustomer() {
         createReview(1L, "alice");
 
@@ -441,8 +429,6 @@ class ReviewSecurityIT extends PostgresIntegrationTestSupport {
     }
 
     @Test
-    @Disabled("BUG S-36: responses carry no X-Content-Type-Options: nosniff, so a browser may MIME-sniff stored markup "
-            + "in a JSON response (no Spring Security / security-headers filter in this service)")
     void responses_carryNosniff() {
         long id = createReview(1L, "alice");
 
@@ -474,7 +460,7 @@ class ReviewSecurityIT extends PostgresIntegrationTestSupport {
 
         assertThat(count("reviews")).isEqualTo(2);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM reviews WHERE customer_id = ?", Long.class, evil)).isEqualTo(1);
-        client.get().uri("/api/v1/reviews/customer/{c}", evil).exchange().expectStatus().isOk()
+        client.get().uri("/api/v1/reviews/customer/{c}", evil).header("X-Username", evil).exchange().expectStatus().isOk()
                 .expectBody().jsonPath("$.length()").isEqualTo(1).jsonPath("$[0].customerId").isEqualTo(evil);
     }
 
@@ -550,8 +536,6 @@ class ReviewSecurityIT extends PostgresIntegrationTestSupport {
     }
 
     @Test
-    @Disabled("BUG S-37: an X-Username longer than the 255-character customer_id column is not validated and ends in a "
-            + "database error answered as 500")
     void veryLongUsernameHeader_isA4xx_not500() {
         // customer_id is a plain varchar(255) column in the migrations
         var result = post(reviewBody(1L, 5), "u".repeat(5000)).expectBody(String.class).returnResult();
@@ -600,7 +584,6 @@ class ReviewSecurityIT extends PostgresIntegrationTestSupport {
     }
 
     @Test
-    @Disabled("BUG S-34: unreadable bodies and non-numeric ids return the framework's own message, exposing Java type names")
     void clientErrors_doNotEchoFrameworkMessages() {
         String badPath = client.get().uri("/api/v1/reviews/abc").exchange().expectStatus().isBadRequest()
                 .expectBody(String.class).returnResult().getResponseBody();
@@ -613,8 +596,6 @@ class ReviewSecurityIT extends PostgresIntegrationTestSupport {
     }
 
     @Test
-    @Disabled("BUG S-35: a request for a URL that does not exist is answered 500 'An unexpected error occurred' "
-            + "(NoResourceFoundException falls into the catch-all handler) instead of 404")
     void unknownPath_is404_not500() {
         client.get().uri("/api/v1/nope").exchange().expectStatus().isNotFound();
         client.get().uri("/actuator/env").exchange().expectStatus().isNotFound();
@@ -628,5 +609,51 @@ class ReviewSecurityIT extends PostgresIntegrationTestSupport {
             assertThat(result.getStatus().value()).as(path).isNotEqualTo(200);
             assertThat(result.getResponseBody()).as(path).doesNotContain("propertySources").doesNotContain("activeProfiles");
         }
+    }
+
+    // ───────────────────────── visibility, filters and headers (S-33, S-36, correlation id, S-6) ─────────────────────────
+
+    @Test
+    void unapprovedReview_isVisibleToItsAuthorAndToAdmins_butNotToStrangersOrAnonymous() {
+        long id = createReview(1L, "alice");
+
+        client.get().uri("/api/v1/reviews/{id}", id).header("X-Username", "alice").exchange().expectStatus().isOk();
+        client.get().uri("/api/v1/reviews/{id}", id).header("X-Username", "root").header("X-User-Role", "ADMIN")
+                .exchange().expectStatus().isOk();
+        client.get().uri("/api/v1/reviews/{id}", id).header("X-Username", "bob").exchange().expectStatus().isForbidden();
+        client.get().uri("/api/v1/reviews/{id}", id).exchange().expectStatus().isUnauthorized();
+        client.get().uri("/api/v1/reviews/{id}", id).header("X-Username", "bob").header("X-User-Role", "admin")
+                .exchange().expectStatus().isForbidden();
+    }
+
+    @Test
+    void approvedOnlyFalse_isHonouredForAdminsOnly() {
+        long id = createReview(1L, "alice");
+
+        client.get().uri("/api/v1/reviews/product/1?approvedOnly=false").header("X-Username", "root").header("X-User-Role", "ADMIN")
+                .exchange().expectStatus().isOk().expectBody().jsonPath("$.length()").isEqualTo(1);
+        client.get().uri("/api/v1/reviews/product/1?approvedOnly=false").header("X-Username", "alice")
+                .exchange().expectStatus().isOk().expectBody().jsonPath("$.length()").isEqualTo(0);
+        client.get().uri("/api/v1/reviews/customer/alice").header("X-Username", "alice")
+                .exchange().expectStatus().isOk().expectBody().jsonPath("$.length()").isEqualTo(1);
+        moderate(id, "REJECTED", "ADMIN");
+        client.get().uri("/api/v1/reviews/customer/alice").header("X-Username", "bob")
+                .exchange().expectStatus().isOk().expectBody().jsonPath("$.length()").isEqualTo(0);
+    }
+
+    @Test
+    void invalidCorrelationId_isReplaced_notEchoed() {
+        client.get().uri("/api/v1/reviews/product/1").header("X-Correlation-Id", "bad value<script>")
+                .exchange().expectStatus().isOk()
+                .expectHeader().value("X-Correlation-Id", v -> assertThat(v).doesNotContain("bad").matches("^[0-9a-f-]{36}$"));
+        client.get().uri("/api/v1/reviews/product/1").header("X-Correlation-Id", "it-corr-1")
+                .exchange().expectHeader().valueEquals("X-Correlation-Id", "it-corr-1");
+    }
+
+    @Test
+    void actuatorHealth_hidesDetails() {
+        var body = client.get().uri("/actuator/health").exchange().expectBody(String.class).returnResult().getResponseBody();
+
+        assertThat(body).doesNotContain("components").doesNotContain("diskSpace").doesNotContain("jdbc");
     }
 }

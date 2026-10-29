@@ -69,7 +69,7 @@ class GlobalExceptionHandlerTest {
                         .content("{\"rating\":1}"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error").value("Forbidden"))
-                .andExpect(jsonPath("$.message").value("nope"));
+                .andExpect(jsonPath("$.message").value("Access denied"));
     }
 
     @Test
@@ -121,7 +121,7 @@ class GlobalExceptionHandlerTest {
         when(reviewService.createReview(any(), any()))
                 .thenThrow(new RuntimeException("Product 999 not found or product service unavailable"));
 
-        mockMvc.perform(post("/api/v1/reviews").contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(post("/api/v1/reviews").header("X-Username", "alice").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"productId\":999,\"rating\":4,\"title\":\"Nice\",\"body\":\"Pretty good product overall\"}"))
                 .andExpect(status().isInternalServerError());
     }

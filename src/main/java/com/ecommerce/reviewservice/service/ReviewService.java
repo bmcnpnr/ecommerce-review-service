@@ -5,6 +5,7 @@ import com.ecommerce.reviewservice.dto.*;
 import com.ecommerce.reviewservice.exception.*;
 import com.ecommerce.reviewservice.model.*;
 import com.ecommerce.reviewservice.repository.*;
+import com.ecommerce.reviewservice.util.LogSanitizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -47,7 +48,7 @@ public class ReviewService {
             .status(ReviewStatus.PENDING)
             .build();
 
-        log.info("Creating review for product {} by customer {}", request.getProductId(), customerId);
+        log.info("Creating review for product {} by customer {}", request.getProductId(), LogSanitizer.clean(customerId));
         return toDTO(reviewRepository.save(review));
     }
 
@@ -83,12 +84,12 @@ public class ReviewService {
     @Transactional
     public void deleteReview(Long id, String customerId, String userRole) {
         Review review = findById(id);
-        boolean isAdmin = "ADMIN".equalsIgnoreCase(userRole);
+        boolean isAdmin = "ADMIN".equals(userRole);
         if (!isAdmin && !review.getCustomerId().equals(customerId)) {
             throw new UnauthorizedReviewAccessException("Only the review author or an admin can delete this review");
         }
         reviewRepository.delete(review);
-        log.info("Deleted review {} by customer {} (role: {})", id, customerId, userRole);
+        log.info("Deleted review {} by customer {} (admin: {})", id, LogSanitizer.clean(customerId), isAdmin);
     }
 
     @Transactional
@@ -120,6 +121,13 @@ public class ReviewService {
     @Transactional
     public ReviewDTO voteOnReview(Long reviewId, String customerId, boolean helpful) {
         Review review = findById(reviewId);
+        // only published reviews take votes; an unpublished one is indistinguishable from a missing one
+        if (review.getStatus() != ReviewStatus.APPROVED) {
+            throw new ReviewNotFoundException("Review not found with id: " + reviewId);
+        }
+        if (review.getCustomerId().equals(customerId)) {
+            throw new UnauthorizedReviewAccessException("Authors cannot vote on their own review");
+        }
         Optional<ReviewVote> existing = reviewVoteRepository.findByReviewIdAndCustomerId(reviewId, customerId);
         if (existing.isPresent()) {
             existing.get().setHelpful(helpful);

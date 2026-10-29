@@ -277,13 +277,14 @@ class ReviewServiceTest {
     }
 
     @Test
-    void deleteReview_adminRoleIsCaseInsensitive() {
+    void deleteReview_adminRoleIsCaseSensitive() {
         Review r = review(1L, "owner", 5, ReviewStatus.APPROVED);
         when(reviewRepository.findById(1L)).thenReturn(Optional.of(r));
 
-        reviewService.deleteReview(1L, "root", "admin");
+        assertThatThrownBy(() -> reviewService.deleteReview(1L, "root", "admin"))
+            .isInstanceOf(UnauthorizedReviewAccessException.class);
 
-        verify(reviewRepository).delete(r);
+        verify(reviewRepository, never()).delete(any());
     }
 
     @Test
