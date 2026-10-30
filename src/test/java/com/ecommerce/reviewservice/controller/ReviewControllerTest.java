@@ -10,6 +10,8 @@ import com.ecommerce.reviewservice.service.ReviewService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -19,7 +21,9 @@ import java.util.Map;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -137,19 +141,55 @@ class ReviewControllerTest {
     }
 
     @Test
+    void aRequestBodyOver1MB_isRefusedBeforeAnythingParsesIt() throws Exception {
+        byte[] huge = ("{\"productId\":1,\"rating\":5,\"title\":\"t\",\"body\":\"" + "x".repeat(2 * 1024 * 1024) + "\"}")
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+
+        mockMvc.perform(post("/api/v1/reviews").header("X-Username", "alice").contentType(MediaType.APPLICATION_JSON).content(huge))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(jsonPath("$.message").value("Request body too large"));
+
+        verifyNoInteractions(reviewService);
+    }
+
+    @Test
     void getByProduct_defaultsToApprovedOnly() throws Exception {
-        when(reviewService.getReviewsByProduct(1L, true)).thenReturn(List.of(review(11L, "alice", ReviewStatus.APPROVED)));
+        when(reviewService.getReviewsByProduct(eq(1L), eq(true), any(Pageable.class)))
+                .thenReturn(List.of(review(11L, "alice", ReviewStatus.APPROVED)));
 
         mockMvc.perform(get("/api/v1/reviews/product/1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)));
 
-        verify(reviewService).getReviewsByProduct(1L, true);
+        // no page parameters: the first page of 100, oldest first
+        verify(reviewService).getReviewsByProduct(eq(1L), eq(true), argThat((Pageable p) ->
+                p.getPageNumber() == 0 && p.getPageSize() == 100 && p.getSort().equals(Sort.by("id"))));
+    }
+
+    @Test
+    void getByProduct_pageAndSizeAreForwarded() throws Exception {
+        when(reviewService.getReviewsByProduct(eq(1L), eq(true), any(Pageable.class))).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/v1/reviews/product/1").param("page", "3").param("size", "25")).andExpect(status().isOk());
+
+        verify(reviewService).getReviewsByProduct(eq(1L), eq(true), argThat((Pageable p) -> p.getPageNumber() == 3 && p.getPageSize() == 25));
+    }
+
+    @Test
+    void listEndpoints_rejectPagesThatAreTooBigOrOutOfRange_withoutTouchingTheService() throws Exception {
+        for (String path : List.of("/api/v1/reviews/product/1", "/api/v1/reviews/customer/alice")) {
+            for (String query : List.of("size=101", "size=0", "size=-1", "page=-1", "size=2147483647",
+                    "page=2147483647&size=100", "size=abc", "page=1.5")) {
+                mockMvc.perform(get(path + "?" + query).header("X-Username", "alice"))
+                        .andExpect(status().isBadRequest());
+            }
+        }
+        verifyNoInteractions(reviewService);
     }
 
     @Test
     void getByProduct_approvedOnlyFalse_includesAllStatuses() throws Exception {
-        when(reviewService.getReviewsByProduct(1L, false)).thenReturn(List.of(
+        when(reviewService.getReviewsByProduct(eq(1L), eq(false), any(Pageable.class))).thenReturn(List.of(
                 review(11L, "alice", ReviewStatus.APPROVED), review(12L, "bob", ReviewStatus.PENDING)));
 
         mockMvc.perform(get("/api/v1/reviews/product/1").param("approvedOnly", "false")
@@ -180,11 +220,27 @@ class ReviewControllerTest {
 
     @Test
     void getByCustomer_returns200() throws Exception {
-        when(reviewService.getReviewsByCustomer("alice")).thenReturn(List.of(review(11L, "alice", ReviewStatus.PENDING)));
+        when(reviewService.getReviewsByCustomer(eq("alice"), eq(false), any(Pageable.class)))
+                .thenReturn(List.of(review(11L, "alice", ReviewStatus.PENDING)));
 
         mockMvc.perform(get("/api/v1/reviews/customer/alice").header("X-Username", "alice"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].customerId").value("alice"));
+    }
+
+    @Test
+    void getByCustomer_unpublishedReviewsAreForTheirAuthorAndAdminsOnly() throws Exception {
+        when(reviewService.getReviewsByCustomer(anyString(), anyBoolean(), any(Pageable.class))).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/v1/reviews/customer/alice").header("X-Username", "alice"));       // the author
+        mockMvc.perform(get("/api/v1/reviews/customer/alice").header("X-Username", "root").header("X-User-Role", "ADMIN"));
+        mockMvc.perform(get("/api/v1/reviews/customer/alice").header("X-Username", "mallory"));     // somebody else
+        mockMvc.perform(get("/api/v1/reviews/customer/alice").header("X-Username", "root").header("X-User-Role", "admin")); // not ADMIN
+        mockMvc.perform(get("/api/v1/reviews/customer/alice"));                                     // anonymous
+
+        // approvedOnly is decided here and applied by the database, so a page is never filtered after the fact
+        verify(reviewService, times(2)).getReviewsByCustomer(eq("alice"), eq(false), any(Pageable.class));
+        verify(reviewService, times(3)).getReviewsByCustomer(eq("alice"), eq(true), any(Pageable.class));
     }
 
     // ───────────────────────── update / delete ─────────────────────────

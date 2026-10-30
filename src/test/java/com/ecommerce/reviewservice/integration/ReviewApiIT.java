@@ -3,6 +3,7 @@ package com.ecommerce.reviewservice.integration;
 import com.ecommerce.reviewservice.client.ProductServiceClient;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.http.Fault;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -10,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -61,13 +63,21 @@ class ReviewApiIT extends PostgresIntegrationTestSupport {
     @Autowired
     private ProductServiceClient productServiceClient;
 
+    @Autowired
+    private CircuitBreakerRegistry circuitBreakers;
+
     private RestTestClient client;
 
     @BeforeEach
     void setUp() {
         jdbc.execute("TRUNCATE review_votes, reviews RESTART IDENTITY CASCADE");
         PRODUCT_SERVICE.resetAll();
-        client = RestTestClient.bindToServer().baseUrl("http://localhost:" + port).build();
+        // The Feign breaker is shared by every test in this cached context: the failures some tests provoke on purpose
+        // must not leave it open (rejecting calls) for the next one.
+        circuitBreakers.circuitBreaker("product-service").reset();
+        // The JDK client: the default Apache HttpClient would re-send a POST that was answered 503 (its default
+        // strategy retries 429/503 whatever the method) and put a second request behind every 503 asserted here.
+        client = RestTestClient.bindToServer(new JdkClientHttpRequestFactory()).baseUrl("http://localhost:" + port).build();
     }
 
     @Test
@@ -175,7 +185,8 @@ class ReviewApiIT extends PostgresIntegrationTestSupport {
         client.post().uri("/api/v1/reviews").header("X-Username", "alice")
                 .contentType(MediaType.APPLICATION_JSON).body(reviewBody(999L, 5))
                 .exchange()
-                .expectStatus().is4xxClientError();
+                .expectStatus().isNotFound()
+                .expectBody().jsonPath("$.message").isEqualTo("Product not found with id: 999");
 
         assertThat(jdbc.queryForObject("SELECT count(*) FROM reviews", Long.class)).isZero();
     }
@@ -187,26 +198,26 @@ class ReviewApiIT extends PostgresIntegrationTestSupport {
         client.post().uri("/api/v1/reviews").header("X-Username", "alice")
                 .contentType(MediaType.APPLICATION_JSON).body(reviewBody(1L, 5))
                 .exchange()
-                .expectStatus().is5xxServerError()
-                .expectBody().jsonPath("$.message").isEqualTo("An unexpected error occurred");
+                .expectStatus().isEqualTo(503)
+                .expectBody().jsonPath("$.message").isEqualTo("Service temporarily unavailable");
 
         assertThat(jdbc.queryForObject("SELECT count(*) FROM reviews", Long.class)).isZero();
     }
 
     @Test
-    void productServiceDroppingConnections_rejectsReview_withoutFeignRetries() {
-        // Connection reset after the request was sent is not a connect failure, so
-        // FeignConfig.ConnectionFailureRetryer must not repeat it (that would be 3
-        // attempts). Apache HttpClient 5's own default retry strategy re-sends an
-        // idempotent GET once on a reset, hence 2 requests at the wire.
+    void productServiceDroppingConnections_rejectsReview_withoutAnyRetry() {
+        // A connection reset after the request was sent is not a connect failure, so
+        // FeignConfig.ConnectionFailureRetryer does not repeat it, and Apache HttpClient 5's own retry
+        // strategy (which used to re-send an idempotent GET once on a reset, R-6) is switched off:
+        // exactly one request reaches the peer.
         PRODUCT_SERVICE.stubFor(get("/api/v1/products/1").willReturn(aResponse().withFault(Fault.CONNECTION_RESET_BY_PEER)));
 
         client.post().uri("/api/v1/reviews").header("X-Username", "alice")
                 .contentType(MediaType.APPLICATION_JSON).body(reviewBody(1L, 5))
                 .exchange()
-                .expectStatus().is5xxServerError();
+                .expectStatus().isEqualTo(503);
 
-        PRODUCT_SERVICE.verify(2, getRequestedFor(urlEqualTo("/api/v1/products/1")));
+        PRODUCT_SERVICE.verify(1, getRequestedFor(urlEqualTo("/api/v1/products/1")));
         assertThat(jdbc.queryForObject("SELECT count(*) FROM reviews", Long.class)).isZero();
     }
 
@@ -215,25 +226,21 @@ class ReviewApiIT extends PostgresIntegrationTestSupport {
         PRODUCT_SERVICE.stubFor(get("/api/v1/products/1").willReturn(aResponse().withStatus(503)));
         client.post().uri("/api/v1/reviews").header("X-Username", "alice")
                 .contentType(MediaType.APPLICATION_JSON).body(reviewBody(1L, 5))
-                .exchange().expectStatus().is5xxServerError();
+                .exchange().expectStatus().isEqualTo(503);
 
         PRODUCT_SERVICE.resetAll();
         productExists(1L);
         createReview(1L, "alice", 5);
     }
 
-    /**
-     * ProductServiceClient declares {@code fallback = ProductServiceClientFallback.class}
-     * and application.yaml configures a resilience4j instance for product-service, but
-     * {@code spring.cloud.openfeign.circuitbreaker.enabled} is never set, so Feign
-     * builds a plain client: the fallback is dead code and no circuit ever opens.
-     */
+    /** The Feign client runs behind the circuit breaker: a failing peer ends in the fallback, as an outage. */
     @Test
     void productClient_whenProductServiceFails_goesThroughTheFallback() {
         PRODUCT_SERVICE.stubFor(get("/api/v1/products/1").willReturn(aResponse().withStatus(503)));
 
         assertThatThrownBy(() -> productServiceClient.getProductById(1L))
-                .hasMessage("Product service unavailable - circuit breaker open");
+                .isExactlyInstanceOf(com.ecommerce.reviewservice.exception.ProductServiceUnavailableException.class)
+                .hasMessage("Product service unavailable");
     }
 
     // ───────────────────────── helpers ─────────────────────────

@@ -1,5 +1,6 @@
 package com.ecommerce.reviewservice.client;
 
+import com.ecommerce.reviewservice.exception.ProductServiceUnavailableException;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -7,12 +8,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ProductServiceClientFallbackTest {
 
     @Test
-    void getProductById_alwaysFailsFast_withCircuitOpenMessage() {
+    void getProductById_alwaysFailsFast_asAnOutage() {
         ProductServiceClient fallback = new ProductServiceClientFallback();
 
         assertThatThrownBy(() -> fallback.getProductById(1L))
-                .isExactlyInstanceOf(RuntimeException.class)
-                .hasMessage("Product service unavailable - circuit breaker open");
+                .isExactlyInstanceOf(ProductServiceUnavailableException.class)
+                .hasMessage("Product service unavailable");
     }
 
     @Test

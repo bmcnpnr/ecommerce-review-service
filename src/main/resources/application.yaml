@@ -11,6 +11,17 @@ spring:
       # peer fails with "Load balancer does not contain an instance".
       eager-load:
         clients: product-service
+    # Spring Cloud CircuitBreaker, left on its defaults, hands every call to a worker thread behind a time limiter
+    # (1 s, which silently cuts every slower call) and a bulkhead thread pool of one thread per CPU with a
+    # 100-call queue (two concurrent calls in a 2-CPU container, the rest rejected). All three are off: the call
+    # runs on the calling thread, Feign's connect and read timeouts below govern, and the breaker only counts.
+    circuitbreaker:
+      resilience4j:
+        disable-thread-pool: true
+        disable-time-limiter: true
+      bulkhead:
+        resilience4j:
+          enabled: false
     openfeign:
       circuitbreaker:
         enabled: true
@@ -29,9 +40,23 @@ spring:
     username: ${DB_USERNAME:reviewuser}
     password: ${DB_PASSWORD:reviewpass}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      # A request waits at most 5s for a connection (default 30s), then fails with a 503 instead of
+      # queueing request threads behind a dead or saturated database.
+      connection-timeout: 5000
+      # pgjdbc defaults to no socket timeout: a database that stops answering (dropped packets, a frozen host, a
+      # failover without a reset) would hold the request thread until the OS gives up, many minutes later. Hikari's
+      # connection-timeout only bounds the wait for a connection, not a read on one that is already open.
+      data-source-properties:
+        connectTimeout: 5   # seconds
+        socketTimeout: 30   # seconds a read may block; statements here take milliseconds
+        tcpKeepAlive: true
   jpa:
     hibernate:
       ddl-auto: validate
+    # Off: with it on, a read outside a transaction keeps its connection until the response has been
+    # written, so slow clients drain the pool. Reads are @Transactional(readOnly) and return DTOs.
+    open-in-view: false
     show-sql: false
     # No hibernate.dialect: Hibernate detects it from the connection (PostgreSQL
     # here, H2 under the test profile); setting it explicitly is deprecated.
@@ -99,15 +124,46 @@ springdoc:
 resilience4j:
   circuitbreaker:
     instances:
+      # The Feign client's breaker is named after the client (FeignConfig.circuitBreakerNameResolver).
       product-service:
         slidingWindowSize: 10
         minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
         failureRateThreshold: 50
         waitDurationInOpenState: 10s
-        # A 404 means the product does not exist: a valid answer, not a failure.
+        # A product-service that answers, but slowly, still holds a request thread per call for up to the read
+        # timeout (10 s). Calls over 5 s count as slow, and when 80 % of the window is slow the breaker opens
+        # and the rest fail fast instead of piling up behind it.
+        slowCallDurationThreshold: 5s
+        slowCallRateThreshold: 80
+        # Without this the breaker leaves OPEN only when a call is attempted, so an idle service stays
+        # "open" in the metrics (and in the CircuitBreakerOpen alert) indefinitely.
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        # A 4xx means the request was wrong or the thing does not exist: product-service is healthy.
+        # Counting those would let a few requests for unknown product ids trip the breaker for everyone.
         ignoreExceptions:
+          - feign.FeignException$BadRequest
+          - feign.FeignException$Unauthorized
+          - feign.FeignException$Forbidden
           - feign.FeignException$NotFound
+          - feign.FeignException$MethodNotAllowed
+          - feign.FeignException$NotAcceptable
+          - feign.FeignException$Conflict
+          - feign.FeignException$Gone
+          - feign.FeignException$UnsupportedMediaType
+          - feign.FeignException$UnprocessableEntity
 
 logging:
   pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} [%X{correlationId}] [%thread] %-5level %logger{36} - %msg%n"
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] [%X{correlationId:-}] [%X{traceId:-}] %-5level %logger{36} - %msg%n"
+  level:
+    # INFO by default; LOGGING_LEVEL_COM_ECOMMERCE=DEBUG turns debug on for a diagnosis.
+    com.ecommerce: INFO
+    # Hibernate writes two lines (WARN "SQL Error: ..." and ERROR with the message) for every failed JDBC call, with no
+    # throttle: a pair per request for as long as the database is down. The exception handler's throttled line
+    # carries the same cause once per window.
+    org.hibernate.orm.jdbc.error: "OFF"
+    # Logs "Application exception overridden by rollback exception" with a stack trace of several hundred lines for
+    # every transaction that was in flight when its connection died (a killed backend, a database restart): up to one
+    # per pooled connection. The exception handler reports the failure once per window, with the root cause.
+    org.springframework.transaction.interceptor.TransactionInterceptor: "OFF"

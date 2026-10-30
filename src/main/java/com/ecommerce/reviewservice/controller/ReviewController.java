@@ -11,6 +11,9 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -29,6 +32,9 @@ public class ReviewController {
 
     /** Length of the {@code customer_id} column. */
     private static final int MAX_USERNAME_LENGTH = 255;
+
+    /** The list endpoints answer with one page of at most this many reviews (oldest first); clients ask for the next with {@code page}. */
+    private static final int MAX_PAGE_SIZE = 100;
 
     private final ReviewService reviewService;
 
@@ -58,13 +64,15 @@ public class ReviewController {
     }
 
     @GetMapping("/product/{productId}")
-    @Operation(summary = "Get reviews by product (approvedOnly=false is honoured for admins only)")
+    @Operation(summary = "Get reviews by product, one page of at most 100 (approvedOnly=false is honoured for admins only)")
     public ResponseEntity<List<ReviewDTO>> getByProduct(
             @PathVariable Long productId,
             @RequestParam(defaultValue = "true") boolean approvedOnly,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "" + MAX_PAGE_SIZE) int size,
             @RequestHeader(value = "X-User-Role", required = false) String userRole) {
         boolean effectiveApprovedOnly = approvedOnly || !isAdmin(userRole);
-        return ResponseEntity.ok(reviewService.getReviewsByProduct(productId, effectiveApprovedOnly));
+        return ResponseEntity.ok(reviewService.getReviewsByProduct(productId, effectiveApprovedOnly, pageRequest(page, size)));
     }
 
     @GetMapping("/product/{productId}/summary")
@@ -74,14 +82,18 @@ public class ReviewController {
     }
 
     @GetMapping("/customer/{customerId}")
-    @Operation(summary = "Get reviews by customer (unapproved reviews: that customer or admin only)",
+    @Operation(summary = "Get reviews by customer, one page of at most 100 (unapproved reviews: that customer or admin only)",
             security = @SecurityRequirement(name = "bearerAuth"))
     public ResponseEntity<List<ReviewDTO>> getByCustomer(
             @PathVariable String customerId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "" + MAX_PAGE_SIZE) int size,
             @RequestHeader(value = "X-Username", required = false) String username,
             @RequestHeader(value = "X-User-Role", required = false) String userRole) {
-        List<ReviewDTO> reviews = reviewService.getReviewsByCustomer(customerId);
-        return ResponseEntity.ok(reviews.stream().filter(r -> canSee(r, username, userRole)).toList());
+        // unpublished reviews belong to their author and to admins; everyone else gets the approved ones, filtered by the
+        // database so that a page is a full page (filtering after paging would return short or empty pages)
+        boolean seesUnpublished = isAdmin(userRole) || (!isBlank(username) && username.equals(customerId));
+        return ResponseEntity.ok(reviewService.getReviewsByCustomer(customerId, !seesUnpublished, pageRequest(page, size)));
     }
 
     @PutMapping("/{id}")
@@ -126,6 +138,16 @@ public class ReviewController {
             @Valid @RequestBody VoteRequest request,
             @RequestHeader(value = "X-Username", required = false) String username) {
         return ResponseEntity.ok(reviewService.voteOnReview(id, requireIdentity(username), request.getHelpful()));
+    }
+
+    private static Pageable pageRequest(int page, int size) {
+        if (page < 0 || size < 1 || size > MAX_PAGE_SIZE) {
+            throw new InvalidRequestException("Page size must be between 1 and " + MAX_PAGE_SIZE);
+        }
+        if ((long) page * size > Integer.MAX_VALUE) {
+            throw new InvalidRequestException("Page out of range");
+        }
+        return PageRequest.of(page, size, Sort.by("id"));
     }
 
     /** Exactly {@code ADMIN}: no trimming, no case folding, no {@code ROLE_} prefix. */

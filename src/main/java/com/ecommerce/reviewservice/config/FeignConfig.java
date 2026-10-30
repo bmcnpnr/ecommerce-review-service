@@ -9,6 +9,8 @@ import org.apache.hc.client5.http.ConnectTimeoutException;
 
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.http.converter.autoconfigure.ClientHttpMessageConvertersCustomizer;
+import org.springframework.cloud.openfeign.CircuitBreakerNameResolver;
+import org.springframework.cloud.openfeign.clientconfig.HttpClient5FeignConfiguration;
 import org.springframework.cloud.openfeign.support.FeignHttpMessageConverters;
 import org.springframework.cloud.openfeign.support.HttpMessageConverterCustomizer;
 import org.springframework.context.annotation.Bean;
@@ -51,6 +53,30 @@ public class FeignConfig {
     @Bean
     public Retryer feignRetryer() {
         return new ConnectionFailureRetryer(3, 100);
+    }
+
+    /**
+     * Apache HttpClient 5 quietly re-sends an idempotent request once on a reset connection and again, after a
+     * pause, on a 503 (R-6). That is a second retry layer under {@link ConnectionFailureRetryer}, one that
+     * contradicts the rule above and doubles the load on a peer that is already struggling. Switched off, so the
+     * retryer is the only one.
+     */
+    @Bean
+    public HttpClient5FeignConfiguration.HttpClientBuilderCustomizer noAutomaticHttpClientRetries() {
+        return builder -> builder.disableAutomaticRetries();
+    }
+
+    /**
+     * One circuit breaker per downstream service instead of one per client method (the default names are derived
+     * from the interface and method, e.g. {@code ProductServiceClientgetProductByIdLong}). The name is what
+     * {@code resilience4j.circuitbreaker.instances.product-service} and
+     * {@code resilience4j.timelimiter.instances.product-service} in application.yaml configure; with the default
+     * names those blocks applied to nothing and the breaker ran on resilience4j's defaults (100 calls before it
+     * could open, and a 1 s time limit that cut every slower call to the fallback).
+     */
+    @Bean
+    public CircuitBreakerNameResolver circuitBreakerNameResolver() {
+        return (feignClientName, target, method) -> feignClientName;
     }
 
     public static class ConnectionFailureRetryer implements Retryer {

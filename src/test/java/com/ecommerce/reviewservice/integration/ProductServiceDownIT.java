@@ -1,11 +1,13 @@
 package com.ecommerce.reviewservice.integration;
 
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -44,12 +46,17 @@ class ProductServiceDownIT extends PostgresIntegrationTestSupport {
     @Autowired
     private JdbcTemplate jdbc;
 
+    @Autowired
+    private CircuitBreakerRegistry circuitBreakers;
+
     private RestTestClient client;
 
     @BeforeEach
     void setUp() {
         jdbc.execute("TRUNCATE review_votes, reviews RESTART IDENTITY CASCADE");
-        client = RestTestClient.bindToServer().baseUrl("http://localhost:" + port).build();
+        circuitBreakers.circuitBreaker("product-service").reset();
+        // The JDK client: the default Apache HttpClient would re-send a POST that was answered 503.
+        client = RestTestClient.bindToServer(new JdkClientHttpRequestFactory()).baseUrl("http://localhost:" + port).build();
     }
 
     @Test
@@ -61,8 +68,8 @@ class ProductServiceDownIT extends PostgresIntegrationTestSupport {
                 .body(Map.of("productId", 1, "rating", 5, "title", "Great mouse",
                         "body", "Comfortable, precise and the battery lasts for weeks."))
                 .exchange()
-                .expectStatus().isEqualTo(500)
-                .expectBody().jsonPath("$.message").isEqualTo("An unexpected error occurred");
+                .expectStatus().isEqualTo(503)
+                .expectBody().jsonPath("$.message").isEqualTo("Service temporarily unavailable");
 
         // two backoffs (100 ms + 200 ms) prove the connection failure was retried
         assertThat(Duration.ofNanos(System.nanoTime() - start)).isGreaterThanOrEqualTo(Duration.ofMillis(300));

@@ -1,6 +1,7 @@
 package com.ecommerce.reviewservice.integration;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -63,6 +64,9 @@ class ReviewSecurityIT extends PostgresIntegrationTestSupport {
     @Autowired
     private JdbcTemplate jdbc;
 
+    @Autowired
+    private CircuitBreakerRegistry circuitBreakers;
+
     private RestTestClient client;
 
     @BeforeEach
@@ -74,6 +78,7 @@ class ReviewSecurityIT extends PostgresIntegrationTestSupport {
                     "{\"id\":" + id + ",\"sku\":\"SKU-" + id + "\",\"name\":\"Wireless Mouse\",\"price\":49.99,"
                             + "\"stockQuantity\":50,\"status\":\"ACTIVE\"}")));
         }
+        circuitBreakers.circuitBreaker("product-service").reset();   // no OPEN breaker left behind by another test
         client = RestTestClient.bindToServer().baseUrl("http://localhost:" + port).build();
     }
 

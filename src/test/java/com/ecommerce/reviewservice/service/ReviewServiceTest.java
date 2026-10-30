@@ -11,6 +11,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
@@ -102,12 +105,11 @@ class ReviewServiceTest {
 
     @Test
     void getProductReviewSummary_noReviews_returnsZero() {
-        when(reviewRepository.findByProductIdAndStatus(1L, ReviewStatus.APPROVED)).thenReturn(List.of());
-        when(reviewRepository.findByProductId(1L)).thenReturn(List.of());
-
         ReviewSummaryDTO summary = reviewService.getProductReviewSummary(1L);
+
         assertThat(summary.getAverageRating()).isEqualTo(0.0);
         assertThat(summary.getTotalReviews()).isEqualTo(0);
+        assertThat(summary.getRatingDistribution()).containsOnlyKeys(1, 2, 3, 4, 5);
     }
 
     // ───────────────────────── helpers ─────────────────────────
@@ -148,67 +150,123 @@ class ReviewServiceTest {
     }
 
     @Test
-    void createReview_productLookupFails_wrapsErrorAndStoresNothing() {
-        when(productServiceClient.getProductById(999L)).thenThrow(new IllegalStateException("404 from product-service"));
+    void createReview_unknownProduct_isAProductNotFound_andStoresNothing() {
+        when(productServiceClient.getProductById(999L)).thenThrow(new ProductNotFoundException("Product not found with id: 999"));
 
         assertThatThrownBy(() -> reviewService.createReview(createRequest(999L), "user1"))
-            .isExactlyInstanceOf(RuntimeException.class)
-            .hasMessage("Product 999 not found or product service unavailable");
+            .isExactlyInstanceOf(ProductNotFoundException.class);
         verifyNoInteractions(reviewRepository);
     }
 
     @Test
-    void createReview_fallbackFailure_isWrappedTheSameWay() {
+    void createReview_productServiceDown_isAnOutage_notABug_andStoresNothing() {
         when(productServiceClient.getProductById(1L))
             .thenAnswer(inv -> new com.ecommerce.reviewservice.client.ProductServiceClientFallback().getProductById(1L));
 
         assertThatThrownBy(() -> reviewService.createReview(createRequest(1L), "user1"))
-            .hasMessage("Product 1 not found or product service unavailable");
-        verify(reviewRepository, never()).save(any());
+            .isExactlyInstanceOf(ProductServiceUnavailableException.class);
+        verifyNoInteractions(reviewRepository);
+    }
+
+    @Test
+    void createReview_anUnexpectedClientFailure_isNotDisguisedAsAnotherError() {
+        when(productServiceClient.getProductById(1L)).thenThrow(new IllegalStateException("bug in the client"));
+
+        assertThatThrownBy(() -> reviewService.createReview(createRequest(1L), "user1"))
+            .isExactlyInstanceOf(IllegalStateException.class)
+            .hasMessage("bug in the client");
+        verifyNoInteractions(reviewRepository);
+    }
+
+    @Test
+    void createReview_doesNotHoldATransactionAroundTheRemoteCall() throws Exception {
+        // A slow product-service must not pin a pooled database connection (H2): no @Transactional on the method.
+        assertThat(ReviewService.class.getMethod("createReview", CreateReviewRequest.class, String.class)
+            .isAnnotationPresent(org.springframework.transaction.annotation.Transactional.class)).isFalse();
+        assertThat(ReviewService.class.isAnnotationPresent(org.springframework.transaction.annotation.Transactional.class)).isFalse();
     }
 
     // ───────────────────────── reads ─────────────────────────
 
+    private static final Pageable FIRST_PAGE = PageRequest.of(0, 100, Sort.by("id"));
+
+    private static ReviewVoteRepository.VoteCount votes(long reviewId, boolean helpful, long total) {
+        return new ReviewVoteRepository.VoteCount() {
+            public Long getReviewId() { return reviewId; }
+            public Boolean getHelpful() { return helpful; }
+            public long getTotal() { return total; }
+        };
+    }
+
     @Test
     void getReviewsByProduct_approvedOnly_queriesApprovedStatus() {
-        when(reviewRepository.findByProductIdAndStatus(1L, ReviewStatus.APPROVED))
+        when(reviewRepository.findByProductIdAndStatus(1L, ReviewStatus.APPROVED, FIRST_PAGE))
             .thenReturn(List.of(review(1L, "a", 5, ReviewStatus.APPROVED)));
 
-        assertThat(reviewService.getReviewsByProduct(1L, true)).hasSize(1);
-        verify(reviewRepository, never()).findByProductId(anyLong());
+        assertThat(reviewService.getReviewsByProduct(1L, true, FIRST_PAGE)).hasSize(1);
+        verify(reviewRepository, never()).findByProductId(anyLong(), any(Pageable.class));
     }
 
     @Test
     void getReviewsByProduct_all_queriesEveryStatus() {
-        when(reviewRepository.findByProductId(1L)).thenReturn(List.of(
+        when(reviewRepository.findByProductId(1L, FIRST_PAGE)).thenReturn(List.of(
             review(1L, "a", 5, ReviewStatus.APPROVED), review(2L, "b", 2, ReviewStatus.PENDING),
             review(3L, "c", 1, ReviewStatus.REJECTED)));
 
-        assertThat(reviewService.getReviewsByProduct(1L, false))
+        assertThat(reviewService.getReviewsByProduct(1L, false, FIRST_PAGE))
             .extracting(ReviewDTO::getStatus)
             .containsExactly(ReviewStatus.APPROVED, ReviewStatus.PENDING, ReviewStatus.REJECTED);
-        verify(reviewRepository, never()).findByProductIdAndStatus(anyLong(), any());
+        verify(reviewRepository, never()).findByProductIdAndStatus(anyLong(), any(), any(Pageable.class));
     }
 
     @Test
-    void getReviewsByCustomer_mapsAll() {
-        when(reviewRepository.findByCustomerId("a")).thenReturn(List.of(review(1L, "a", 5, ReviewStatus.APPROVED)));
+    void getReviewsByProduct_neverLoadsAnUnboundedList() {
+        when(reviewRepository.findByProductIdAndStatus(1L, ReviewStatus.APPROVED, FIRST_PAGE)).thenReturn(List.of());
 
-        assertThat(reviewService.getReviewsByCustomer("a")).extracting(ReviewDTO::getCustomerId).containsExactly("a");
+        assertThat(reviewService.getReviewsByProduct(1L, true, FIRST_PAGE)).isEmpty();
+
+        verify(reviewRepository, never()).findByProductId(anyLong());
+        verify(reviewRepository, never()).findByProductIdAndStatus(anyLong(), any());
+        verifyNoInteractions(reviewVoteRepository);   // an empty page asks for no votes at all
+    }
+
+    @Test
+    void getReviewsByCustomer_publishedOnlyOrEverything() {
+        when(reviewRepository.findByCustomerIdAndStatus("a", ReviewStatus.APPROVED, FIRST_PAGE))
+            .thenReturn(List.of(review(1L, "a", 5, ReviewStatus.APPROVED)));
+        when(reviewRepository.findByCustomerId("a", FIRST_PAGE))
+            .thenReturn(List.of(review(1L, "a", 5, ReviewStatus.APPROVED), review(2L, "a", 3, ReviewStatus.PENDING)));
+
+        assertThat(reviewService.getReviewsByCustomer("a", true, FIRST_PAGE)).extracting(ReviewDTO::getId).containsExactly(1L);
+        assertThat(reviewService.getReviewsByCustomer("a", false, FIRST_PAGE)).extracting(ReviewDTO::getId).containsExactly(1L, 2L);
     }
 
     @Test
     void getReviewById_countsHelpfulAndUnhelpfulVotes() {
         Review r = review(1L, "a", 5, ReviewStatus.APPROVED);
-        r.getVotes().add(ReviewVote.builder().review(r).customerId("x").helpful(true).build());
-        r.getVotes().add(ReviewVote.builder().review(r).customerId("y").helpful(true).build());
-        r.getVotes().add(ReviewVote.builder().review(r).customerId("z").helpful(false).build());
         when(reviewRepository.findById(1L)).thenReturn(Optional.of(r));
+        when(reviewVoteRepository.countByReview(List.of(1L))).thenReturn(List.of(votes(1L, true, 2), votes(1L, false, 1)));
 
         ReviewDTO dto = reviewService.getReviewById(1L);
 
         assertThat(dto.getHelpfulVotes()).isEqualTo(2);
         assertThat(dto.getUnhelpfulVotes()).isEqualTo(1);
+    }
+
+    @Test
+    void aPageOfReviews_isCountedWithOneVoteQuery_notOnePerReview() {
+        when(reviewRepository.findByProductIdAndStatus(1L, ReviewStatus.APPROVED, FIRST_PAGE)).thenReturn(List.of(
+            review(1L, "a", 5, ReviewStatus.APPROVED), review(2L, "b", 4, ReviewStatus.APPROVED),
+            review(3L, "c", 3, ReviewStatus.APPROVED)));
+        when(reviewVoteRepository.countByReview(List.of(1L, 2L, 3L))).thenReturn(List.of(
+            votes(1L, true, 7), votes(3L, true, 1), votes(3L, false, 4)));
+
+        List<ReviewDTO> page = reviewService.getReviewsByProduct(1L, true, FIRST_PAGE);
+
+        assertThat(page).extracting(ReviewDTO::getHelpfulVotes).containsExactly(7L, 0L, 1L);
+        assertThat(page).extracting(ReviewDTO::getUnhelpfulVotes).containsExactly(0L, 0L, 4L);
+        verify(reviewVoteRepository, times(1)).countByReview(any());
+        verifyNoMoreInteractions(reviewVoteRepository);
     }
 
     // ───────────────────────── update / delete ─────────────────────────
@@ -330,16 +388,19 @@ class ReviewServiceTest {
 
     // ───────────────────────── summary maths ─────────────────────────
 
+    private static ReviewRepository.RatingCount ratings(int rating, long total) {
+        return new ReviewRepository.RatingCount() {
+            public Short getRating() { return (short) rating; }
+            public long getTotal() { return total; }
+        };
+    }
+
     @Test
-    void summary_averagesApprovedOnly_distributionHasAllFiveBuckets_totalCountsEveryStatus() {
-        List<Review> approved = List.of(
-            review(1L, "a", 5, ReviewStatus.APPROVED), review(2L, "b", 4, ReviewStatus.APPROVED),
-            review(3L, "c", 4, ReviewStatus.APPROVED), review(4L, "d", 1, ReviewStatus.APPROVED));
-        when(reviewRepository.findByProductIdAndStatus(1L, ReviewStatus.APPROVED)).thenReturn(approved);
-        List<Review> all = new java.util.ArrayList<>(approved);
-        all.add(review(5L, "e", 1, ReviewStatus.PENDING));
-        all.add(review(6L, "f", 1, ReviewStatus.REJECTED));
-        when(reviewRepository.findByProductId(1L)).thenReturn(all);
+    void summary_isComputedFromCounts_distributionHasAllFiveBuckets_totalCountsEveryStatus() {
+        when(reviewRepository.countRatings(1L, ReviewStatus.APPROVED))
+            .thenReturn(List.of(ratings(5, 1), ratings(4, 2), ratings(1, 1)));
+        when(reviewRepository.countByProductIdAndStatus(1L, ReviewStatus.APPROVED)).thenReturn(4L);
+        when(reviewRepository.countByProductId(1L)).thenReturn(6L);
 
         ReviewSummaryDTO summary = reviewService.getProductReviewSummary(1L);
 
@@ -352,6 +413,15 @@ class ReviewServiceTest {
     }
 
     @Test
+    void summary_neverLoadsTheReviewsThemselves() {
+        reviewService.getProductReviewSummary(1L);
+
+        verify(reviewRepository, never()).findByProductId(anyLong());
+        verify(reviewRepository, never()).findByProductIdAndStatus(anyLong(), any());
+        verify(reviewRepository, never()).findAll();
+    }
+
+    @Test
     void summary_roundsAverageToOneDecimal() {
         assertThat(averageOf(5, 4, 4)).isEqualTo(4.3);   // 4.333…
         assertThat(averageOf(5, 5, 4)).isEqualTo(4.7);   // 4.666…
@@ -361,9 +431,23 @@ class ReviewServiceTest {
     }
 
     @Test
+    void summary_roundsExactHalvesUp() {
+        assertThat(averageOfCounts(ratings(1, 1), ratings(2, 1), ratings(3, 2))).as("9 / 4 = 2.25").isEqualTo(2.3);
+        assertThat(averageOfCounts(ratings(1, 1), ratings(2, 7))).as("15 / 8 = 1.875").isEqualTo(1.9);
+        assertThat(averageOfCounts(ratings(5, 1), ratings(4, 3))).as("17 / 4 = 4.25").isEqualTo(4.3);
+        assertThat(averageOfCounts(ratings(1, 19), ratings(2, 1))).as("21 / 20 = 1.05").isEqualTo(1.1);
+        assertThat(averageOfCounts(ratings(2, 1), ratings(3, 1))).as("5 / 2 = 2.5, nothing to round").isEqualTo(2.5);
+    }
+
+    @Test
+    void summary_largeCounts_doNotOverflowOrLoseAPoint() {
+        long many = 3_000_000_000L; // more than an int holds
+        assertThat(averageOfCounts(ratings(5, many), ratings(4, many))).isEqualTo(4.5);
+    }
+
+    @Test
     void summary_noApproved_butPendingExists() {
-        when(reviewRepository.findByProductIdAndStatus(1L, ReviewStatus.APPROVED)).thenReturn(List.of());
-        when(reviewRepository.findByProductId(1L)).thenReturn(List.of(review(1L, "a", 5, ReviewStatus.PENDING)));
+        when(reviewRepository.countByProductId(1L)).thenReturn(1L);
 
         ReviewSummaryDTO summary = reviewService.getProductReviewSummary(1L);
 
@@ -373,13 +457,21 @@ class ReviewServiceTest {
         assertThat(summary.getRatingDistribution()).hasSize(5).allSatisfy((k, v) -> assertThat(v).isZero());
     }
 
+    @Test
+    void summary_aRatingOutsideOneToFive_cannotSkewTheMean() {
+        // the CHECK constraint makes this impossible in Postgres; the H2 profile has none
+        assertThat(averageOfCounts(ratings(0, 100), ratings(4, 2), ratings(5, 2))).isEqualTo(4.5);
+    }
+
     private double averageOf(int... ratings) {
-        List<Review> approved = new java.util.ArrayList<>();
-        for (int i = 0; i < ratings.length; i++) {
-            approved.add(review(i + 1, "c" + i, ratings[i], ReviewStatus.APPROVED));
-        }
-        when(reviewRepository.findByProductIdAndStatus(1L, ReviewStatus.APPROVED)).thenReturn(approved);
-        when(reviewRepository.findByProductId(1L)).thenReturn(approved);
+        java.util.Map<Integer, Long> counts = new java.util.TreeMap<>();
+        for (int rating : ratings) counts.merge(rating, 1L, Long::sum);
+        return averageOfCounts(counts.entrySet().stream().map(e -> ratings(e.getKey(), e.getValue()))
+            .toArray(ReviewRepository.RatingCount[]::new));
+    }
+
+    private double averageOfCounts(ReviewRepository.RatingCount... counts) {
+        when(reviewRepository.countRatings(1L, ReviewStatus.APPROVED)).thenReturn(List.of(counts));
         return reviewService.getProductReviewSummary(1L).getAverageRating();
     }
 
@@ -408,6 +500,7 @@ class ReviewServiceTest {
         r.getVotes().add(existing);
         when(reviewRepository.findById(1L)).thenReturn(Optional.of(r));
         when(reviewVoteRepository.findByReviewIdAndCustomerId(1L, "voter")).thenReturn(Optional.of(existing));
+        when(reviewVoteRepository.countByReview(List.of(1L))).thenReturn(List.of(votes(1L, false, 1)));
 
         ReviewDTO dto = reviewService.voteOnReview(1L, "voter", false);
 

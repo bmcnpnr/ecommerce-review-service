@@ -162,11 +162,11 @@ class ProductServiceConsumerPactTest {
     @Test
     @PactTestFor(pactMethod = "unknownProductIsNotFound")
     void createReview_unknownProduct_isRejectedAndNothingIsStored() {
-        // ReviewService wraps any client failure in a RuntimeException; its
-        // GlobalExceptionHandler has no mapping for it, so callers see a 500 today.
+        // This test wires the bare Feign client, without the circuit breaker, so product-service's 404 arrives
+        // as the Feign exception. In the running service the breaker's fallback factory turns it into a
+        // ProductNotFoundException (404 for the caller, see ReviewApiIT.unknownProduct_isAClientError).
         assertThatThrownBy(() -> reviewService.createReview(request(999L), "alice"))
-                .isInstanceOf(RuntimeException.class)
-                .hasMessage("Product 999 not found or product service unavailable");
+                .isInstanceOf(feign.FeignException.NotFound.class);
         verify(reviewRepository, never()).save(any());
     }
 

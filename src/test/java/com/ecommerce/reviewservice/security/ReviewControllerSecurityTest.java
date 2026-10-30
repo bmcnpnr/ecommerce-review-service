@@ -253,14 +253,15 @@ class ReviewControllerSecurityTest {
 
     @Test
     void customerIdPathParameter_isBoundAsAParameter_notInterpreted() throws Exception {
-        when(reviewService.getReviewsByCustomer(anyString())).thenReturn(java.util.List.of());
+        when(reviewService.getReviewsByCustomer(anyString(), anyBoolean(), any(org.springframework.data.domain.Pageable.class)))
+                .thenReturn(java.util.List.of());
 
         mockMvc.perform(get("/api/v1/reviews/customer/{c}", "' OR '1'='1")).andExpect(status().isOk()).andExpect(content().json("[]"));
         mockMvc.perform(get("/api/v1/reviews/customer/{c}", "alice' --")).andExpect(status().isOk());
 
-        verify(reviewService).getReviewsByCustomer("' OR '1'='1");
-        verify(reviewService).getReviewsByCustomer("alice' --");
-        verify(reviewService, never()).getReviewsByCustomer("alice");
+        verify(reviewService).getReviewsByCustomer(eq("' OR '1'='1"), anyBoolean(), any(org.springframework.data.domain.Pageable.class));
+        verify(reviewService).getReviewsByCustomer(eq("alice' --"), anyBoolean(), any(org.springframework.data.domain.Pageable.class));
+        verify(reviewService, never()).getReviewsByCustomer(eq("alice"), anyBoolean(), any(org.springframework.data.domain.Pageable.class));
     }
 
     // ───────────────────────── error bodies ─────────────────────────
